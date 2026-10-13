@@ -1,7 +1,6 @@
 package quanlykhachsan.backend.auth;
 
 import quanlykhachsan.backend.user.User;
-import quanlykhachsan.backend.auth.AuthService;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import java.io.IOException;
@@ -14,7 +13,6 @@ import quanlykhachsan.backend.utils.JsonUtil;
 import quanlykhachsan.backend.auth.dto.LoginRequest;
 import quanlykhachsan.backend.auth.dto.RegisterRequest;
 import quanlykhachsan.backend.auth.dto.AuthResponse;
-import quanlykhachsan.backend.auth.dto.AuthUserInfo;
 
 public class AuthController implements HttpHandler {
 
@@ -38,7 +36,7 @@ public class AuthController implements HttpHandler {
             AuthResponse response = new AuthResponse();
             int statusCode = 200;
             
-            if ("/api/auth/login".equals(path)) {
+            if ("/api/v1/auth/login".equals(path)) {
                 LoginRequest loginRequest = gson.fromJson(reqObj, LoginRequest.class);
 
                 User user = authService.login(loginRequest.getUsername(), loginRequest.getPassword());
@@ -52,12 +50,15 @@ public class AuthController implements HttpHandler {
                     if (user.getRoleId() == adminId) roleStr = "ADMIN";
                     else if (user.getRoleId() == customerId) roleStr = "CUSTOMER";
 
-                    response = AuthMapper.success("Đăng nhập thành công", AuthMapper.toUserInfo(user, roleStr));
+                    quanlykhachsan.backend.auth.dto.AuthUserInfo userInfo = AuthMapper.toUserInfo(user, roleStr);
+                    userInfo.setToken(quanlykhachsan.backend.utils.JwtTokenUtil.issueToken(
+                        user.getId(), user.getUsername(), roleStr));
+                    response = AuthMapper.success("Đăng nhập thành công", userInfo);
                 } else {
                     statusCode = 401;
                     response = AuthMapper.error("Sai tên đăng nhập hoặc mật khẩu");
                 }
-            } else if ("/api/auth/register".equals(path)) {
+            } else if ("/api/v1/auth/register".equals(path)) {
                 RegisterRequest registerRequest = gson.fromJson(reqObj, RegisterRequest.class);
                 
                 if (registerRequest.getUsername() == null || registerRequest.getPassword() == null || registerRequest.getUsername().isEmpty() || registerRequest.getPassword().isEmpty()) {
