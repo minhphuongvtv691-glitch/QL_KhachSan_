@@ -19,6 +19,12 @@ import javax.crypto.SecretKey;
 public class JwtFilter extends Filter {
 
 
+    private static final java.util.Set<String> PUBLIC_PATHS = java.util.Set.of(
+        "/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/health",
+        "/api/v1/auth/guest-otp/request", "/api/v1/auth/guest-otp/verify",
+        "/api/v1/rooms/availability", "/api/v1/pricing/quote", "/api/v1/promotions/validate", "/api/v1/bookings/public");
+
+
     private final SecretKey key = JwtTokenUtil.signingKey();
 
 
@@ -29,6 +35,7 @@ public class JwtFilter extends Filter {
 
     @Override
     public void doFilter(HttpExchange exchange, Chain chain) throws IOException {
+
         String rawPath = exchange.getRequestURI().getPath();
         String path = (rawPath == null || rawPath.isEmpty()) ? "/" : rawPath;
         if (path.length() > 1 && path.endsWith("/")) {
@@ -37,9 +44,11 @@ public class JwtFilter extends Filter {
 
         // 1. Skip authentication checks for CORS preflight (OPTIONS)
         if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+
             chain.doFilter(exchange);
             return;
         }
+
 
         // 2. Public path whitelist (Login, Register, Deep Healthcheck)
         if (isWhitelisted(path)) {
@@ -49,6 +58,7 @@ public class JwtFilter extends Filter {
 
         // 3. Inspect Authorization header
         String authHeader = exchange.getRequestHeaders().getFirst("Authorization");
+
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             ApiResponseUtil.sendError(
                     exchange,
@@ -58,6 +68,7 @@ public class JwtFilter extends Filter {
             );
             return;
         }
+
 
         String token = authHeader.substring(7).trim();
         if (token.isEmpty()) {
@@ -109,7 +120,10 @@ public class JwtFilter extends Filter {
                     "ERR_401_TOKEN_INVALID",
                     "Authentication token is invalid or expired"
             );
+
         }
+        // Downstream errors must not be misreported as JWT validation failures.
+        chain.doFilter(exchange);
     }
 
     /**

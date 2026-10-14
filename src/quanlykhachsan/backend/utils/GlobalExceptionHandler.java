@@ -28,8 +28,17 @@ public class GlobalExceptionHandler extends Filter {
     public void doFilter(HttpExchange exchange, Chain chain) throws IOException {
         try {
             chain.doFilter(exchange);
-        } catch (Throwable t) {
-            handle(exchange, t);
+
+        } catch (IllegalArgumentException e) {
+            sendError(exchange, 400, "ERR_400_BAD_REQUEST", e.getMessage());
+        } catch (SecurityException e) {
+            sendError(exchange, 403, "ERR_403_FORBIDDEN", e.getMessage());
+        } catch (IllegalStateException e) {
+            sendError(exchange, 409, "ERR_409_CONFLICT", e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            sendError(exchange, 500, "ERR_500_SERVER_ERROR", "The request could not be completed.");
+
         }
     }
 
@@ -77,6 +86,7 @@ public class GlobalExceptionHandler extends Filter {
             current = current.getCause();
         }
 
+
         Throwable target = (domainException != null) ? domainException : rootCause;
 
         if (target instanceof IllegalArgumentException) {
@@ -94,6 +104,7 @@ public class GlobalExceptionHandler extends Filter {
                     exchange.getRequestMethod(), exchange.getRequestURI(), throwable.getMessage(), throwable);
             // Strictly do NOT leak stack traces to client; return safe RFC-7807 500 error
             ApiResponseUtil.sendError(exchange, 500, "ERR_500_SERVER_ERROR", "Internal Server Error: An unexpected error occurred.");
+
         }
     }
 

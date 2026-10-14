@@ -22,14 +22,17 @@ public class CorsFilter extends Filter {
     @Override
     public void doFilter(HttpExchange exchange, Chain chain) throws IOException {
         // Set standard CORS response headers
+
         exchange.getResponseHeaders().set("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
         exchange.getResponseHeaders().set("Access-Control-Allow-Methods", ALLOWED_METHODS);
         exchange.getResponseHeaders().set("Access-Control-Allow-Headers", ALLOWED_HEADERS);
         exchange.getResponseHeaders().set("Access-Control-Max-Age", MAX_AGE);
 
+
         // Handle OPTIONS request pre-flight checks per W3C & ADR-05 (204 No Content)
         if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
             exchange.sendResponseHeaders(204, -1);
+
             return;
         }
 

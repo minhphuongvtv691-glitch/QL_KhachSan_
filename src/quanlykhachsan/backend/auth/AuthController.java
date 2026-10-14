@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -26,6 +27,7 @@ import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
 
 /**
  * Authentication Controller (TASK-A1.4).
@@ -98,6 +100,13 @@ public class AuthController implements HttpHandler {
                     String roleStr = "STAFF";
                     if (user.getRoleId() == adminId) roleStr = "ADMIN";
                     else if (user.getRoleId() == customerId) roleStr = "CUSTOMER";
+                    else {
+                        roleStr = null;
+                        for(var role:userDAO.selectAllRoles())if(role.getId()==user.getRoleId())roleStr=role.getName();
+                        if(roleStr==null || !java.util.Set.of("staff","front_desk","housekeeping","maintenance","f&b").contains(roleStr.toLowerCase(java.util.Locale.ROOT))) {
+                            ApiResponseUtil.write(exchange,403,ApiResponseUtil.error("Role is not authorized"));return;
+                        }
+                    }
 
                     quanlykhachsan.backend.auth.dto.AuthUserInfo userInfo = AuthMapper.toUserInfo(user, roleStr);
                     userInfo.setToken(quanlykhachsan.backend.utils.JwtTokenUtil.issueToken(

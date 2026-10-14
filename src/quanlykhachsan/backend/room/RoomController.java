@@ -32,6 +32,7 @@ public class RoomController implements HttpHandler {
         String method = exchange.getRequestMethod();
 
 
+
         // TASK-A2.1 Endpoints
         if ("/api/v1/rooms/availability".equals(path) || path.endsWith("/rooms/availability")) {
             if ("GET".equalsIgnoreCase(method)) {
@@ -129,6 +130,10 @@ public class RoomController implements HttpHandler {
     }
 
     private void handleUpdateStatus(HttpExchange exchange, int roomId) throws IOException {
+        ApiResponseUtil.write(exchange,403,ApiResponseUtil.error("Use the authorized booking, housekeeping or maintenance workflow"));
+    }
+
+    private void legacyUpdateStatus(HttpExchange exchange, int roomId) throws IOException {
         // Cập nhật trạng thái phòng (thường dùng cho lễ tân check-in/out)
         // Không yêu cầu quyền Admin ở đây để nhân viên có thể thao tác
         try {

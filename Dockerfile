@@ -1,9 +1,11 @@
+
 # ==============================================================================
 # Multi-stage Hardened Alpine Production Container for 5★ Luxury Hotel PMS
 # Base OS: Alpine Linux 3.19 | Runtime: Eclipse Temurin JRE 17 (Pure Java)
 # Constraints: 0 Critical / 0 High CVEs, Non-root execution, G1GC memory tuning
 # Reference: TASK-D4.1, TASK-D4.3 (DevOps & Production Hardening)
 # ==============================================================================
+
 
 # ------------------------------------------------------------------------------
 # STAGE 1: Dependency Resolution & Application Build
@@ -12,13 +14,16 @@ FROM maven:3.9.6-eclipse-temurin-17-alpine AS builder
 
 WORKDIR /build
 
+
 # 1. Cache Maven POM and dependencies
 COPY pom.xml ./
 COPY owasp-suppressions.xml ./
 
 # 2. Copy source code and local libraries
+
 COPY src/ ./src/
-COPY lib/ ./lib/
+RUN mvn -B -DskipTests package dependency:copy-dependencies -DincludeScope=runtime
+
 
 # 3. Package application and copy runtime dependencies (skip unit tests for fast reproducible packaging)
 RUN mvn clean package -DskipTests
@@ -27,6 +32,7 @@ RUN mvn clean package -DskipTests
 # STAGE 2: Minimal Hardened Production Runtime (Alpine Linux JRE 17)
 # ------------------------------------------------------------------------------
 FROM eclipse-temurin:17-jre-alpine
+
 
 WORKDIR /app
 

@@ -44,4 +44,7 @@ public final class DatabaseConnection {
         if (!DATA_SOURCE.isClosed()) DATA_SOURCE.close();
 
     }
+    /** Read-only pool telemetry for load verification and operational health. */
+    public static int activeConnections(){return DATA_SOURCE.getHikariPoolMXBean().getActiveConnections();}
+    public static int awaitingConnections(){return DATA_SOURCE.getHikariPoolMXBean().getThreadsAwaitingConnection();}
 }

@@ -1,6 +1,7 @@
 package quanlykhachsan.backend.booking;
 
 
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -67,6 +68,7 @@ public class FolioRoutingEngine {
 
         public ChargeItem(String chargeId, ChargeCategory category, String description, double amount, String routedFolioId, String businessDate, String timestamp) {
             this(chargeId, category, description, amount, routedFolioId, businessDate, timestamp, null);
+
         }
 
         public ChargeItem(String chargeId, ChargeCategory category, String description, double amount, String routedFolioId, String businessDate, String timestamp, String offlineTimestamp) {
@@ -93,6 +95,7 @@ public class FolioRoutingEngine {
         public String getBusinessDate() { return businessDate; }
         public String getOfflineTimestamp() { return offlineTimestamp; }
     }
+
 
     public static class Folio {
         private final String folioId;
@@ -153,6 +156,7 @@ public class FolioRoutingEngine {
             this.masterFolioId = masterFolioId;
             this.guestFolioId = guestFolioId;
             this.bookingId = bookingId;
+
         }
 
         public String getMasterFolioId() { return masterFolioId; }
