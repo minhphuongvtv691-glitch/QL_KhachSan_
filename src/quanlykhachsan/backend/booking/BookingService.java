@@ -1,17 +1,10 @@
 package quanlykhachsan.backend.booking;
 
-import quanlykhachsan.backend.booking.BookingDAO;
-import quanlykhachsan.backend.booking.BookingDAOImpl;
 import quanlykhachsan.backend.room.RoomDAOImpl;
-import quanlykhachsan.backend.booking.Booking;
-import quanlykhachsan.backend.booking.Invoice;
-import quanlykhachsan.backend.booking.InvoiceDAOImpl;
 import quanlykhachsan.backend.promotion.Promotion;
 import quanlykhachsan.backend.customer.Customer;
 import quanlykhachsan.backend.room.Room;
 import quanlykhachsan.backend.customer.CustomerDAOImpl;
-import quanlykhachsan.backend.room.RoomDAOImpl;
-import quanlykhachsan.backend.booking.PaymentDAOImpl;
 import quanlykhachsan.backend.promotion.PromotionService;
 
 import java.util.List;
@@ -31,8 +24,12 @@ public class BookingService {
         List<Booking> bookings = bookingDAO.findByRoomId(roomId);
 
         for (Booking b : bookings) {
-            boolean overlap = checkIn.getTime() <= b.getCheckOutDate().getTime() &&
-                              checkOut.getTime() >= b.getCheckInDate().getTime();
+            String st = b.getStatus() != null ? b.getStatus().toLowerCase() : "";
+            if (st.equals("cancelled") || st.equals("no_show") || st.equals("completed") || st.equals("checked_out")) {
+                continue;
+            }
+            boolean overlap = checkIn.getTime() < b.getCheckOutDate().getTime() &&
+                              checkOut.getTime() > b.getCheckInDate().getTime();
             if (overlap) return false;
         }
         return true;
@@ -72,7 +69,8 @@ public class BookingService {
     public boolean cancelBooking(int bookingId) {
         Booking b = getBookingById(bookingId);
         if (b != null) {
-            bookingDAO.deleteBooking(b);
+            b.setStatus("cancelled");
+            bookingDAO.updateBooking(b);
             return true;
         }
         return false;
@@ -98,8 +96,8 @@ public class BookingService {
                 }
             }
 
-            // 3. Update Booking status to "paid"
-            b.setStatus("paid");
+            // 3. Update Booking status to "checked_out" (MySQL ENUM requires 'checked_out', not 'paid')
+            b.setStatus("checked_out");
             bookingDAO.updateBooking(b);
             
             // 4. Create Payment record
