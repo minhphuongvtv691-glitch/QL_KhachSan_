@@ -1,7 +1,5 @@
 package quanlykhachsan.backend.booking;
 
-import quanlykhachsan.backend.booking.Booking;
-import quanlykhachsan.backend.booking.BookingService;
 import quanlykhachsan.backend.room.RoomService;
 import quanlykhachsan.backend.customer.LoyaltyService;
 import quanlykhachsan.backend.utils.SecurityUtil;
@@ -10,7 +8,6 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -18,6 +15,8 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import quanlykhachsan.backend.utils.JsonUtil;
 import quanlykhachsan.backend.booking.dto.BookingCreateRequest;
+import quanlykhachsan.backend.room.OptimisticLockException;
+import quanlykhachsan.backend.room.RoomAllocationService;
 
 public class BookingController implements HttpHandler {
 
@@ -36,13 +35,25 @@ public class BookingController implements HttpHandler {
 
         try {
             // 0. GET /api/bookings (Lấy danh sách booking)
-            if ("GET".equalsIgnoreCase(method) && "/api/bookings".equals(path)) {
+            if ("GET".equalsIgnoreCase(method) && ("/api/bookings".equals(path) || "/api/v1/bookings".equals(path))) {
                 ApiResponseUtil.write(exchange, 200, ApiResponseUtil.successWithData(bookingService.getAllBookings()));
                 return;
             }
 
+            if ("GET".equalsIgnoreCase(method) && path.matches("/api/v1/bookings/\\d+")) {
+                int bookingId = Integer.parseInt(path.substring(path.lastIndexOf('/') + 1));
+                Booking booking = bookingService.getBookingById(bookingId);
+                if (booking == null) {
+                    ApiResponseUtil.write(exchange, 404, ApiResponseUtil.error("Booking not found"));
+                    return;
+                }
+                ApiResponseUtil.write(exchange, 200,
+                    ApiResponseUtil.successWithData(bookingService.getBookingFolioDetails(booking)));
+                return;
+            }
+
             // 1. POST /api/bookings (Đặt phòng)
-            if ("POST".equalsIgnoreCase(method) && "/api/bookings".equals(path)) {
+            if ("POST".equalsIgnoreCase(method) && ("/api/bookings".equals(path) || "/api/v1/bookings".equals(path))) {
                 InputStream is = exchange.getRequestBody();
                 String requestBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
 
@@ -56,27 +67,29 @@ public class BookingController implements HttpHandler {
 
                 int customerId = req.getCustomerId();
                 int roomId = req.getRoomId();
+                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
                 Date checkIn = sdf.parse(req.getCheckInDate());
                 Date checkOut = sdf.parse(req.getCheckOutDate());
 
+                java.util.Calendar cal = java.util.Calendar.getInstance();
+                cal.setTime(checkIn);
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 14);
+                checkIn = cal.getTime();
+
+                cal.setTime(checkOut);
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 12);
+                checkOut = cal.getTime();
+
                 // Lấy thông tin phòng để kiểm tra trạng thái và tính giá tạm tính
-                quanlykhachsan.backend.room.Room room = roomService.getRoomById(roomId);
+                RoomAllocationService.RoomSnapshot room = RoomAllocationService.findRoom(roomId);
                 if (room == null) {
                     ApiResponseUtil.write(exchange, 400, ApiResponseUtil.error("Phòng không tồn tại!"));
                     return;
                 }
 
-                String st = room.getStatus() != null ? room.getStatus().toLowerCase() : "available";
-                if (!"available".equals(st)) {
-                    if (st.equals("maintenance")) {
-                        ApiResponseUtil.write(exchange, 400, ApiResponseUtil.error("Phòng đang được bảo trì!"));
-                    } else if (st.equals("cleaning")) {
-                        ApiResponseUtil.write(exchange, 400, ApiResponseUtil.error("Phòng đang dọn dẹp!"));
-                    } else if (st.equals("booked") || st.equals("occupied") || st.equals("pending")) {
-                        ApiResponseUtil.write(exchange, 400, ApiResponseUtil.error("Phòng đã được đặt hoặc đang có khách!"));
-                    } else {
-                        ApiResponseUtil.write(exchange, 400, ApiResponseUtil.error("Phòng không khả dụng!"));
-                    }
+                String st = room.status() != null ? room.status().toLowerCase() : "";
+                if (!"vacant_clean".equals(st)) {
+                    ApiResponseUtil.write(exchange, 409, ApiResponseUtil.error("Room is not available for reservation"));
                     return;
                 }
 
@@ -84,7 +97,10 @@ public class BookingController implements HttpHandler {
                 long diff = checkOut.getTime() - checkIn.getTime();
                 long days = diff / (1000 * 60 * 60 * 24);
                 if (days < 1) days = 1;
-                double totalPrice = days * room.getPrice();
+                java.math.BigDecimal roomFee = room.price().multiply(java.math.BigDecimal.valueOf(days));
+                FinancialCalculator.Calculation pricing = FinancialCalculator.calculate(
+                    roomFee, java.math.BigDecimal.ZERO, TaxConfig.fromRuntimeConfiguration());
+                double totalPrice = pricing.getTotalAmount().doubleValue();
 
                 Booking newBooking = new Booking();
                 newBooking.setCustomerId(customerId);
@@ -94,40 +110,38 @@ public class BookingController implements HttpHandler {
                 newBooking.setTotalPrice(totalPrice);
                 newBooking.setStatus("pending");
 
-                int generatedId = bookingService.addBooking(newBooking);
+                int expectedRoomVersion = room.version();
+                int generatedId = bookingService.addBooking(newBooking, expectedRoomVersion);
 
                 if (generatedId > 0) {
-                    // Update room status -> booked
-                    roomService.updateRoomStatus(roomId, "booked");
                     JsonObject details = new JsonObject();
                     details.addProperty("bookingId", generatedId);
-                    ApiResponseUtil.write(exchange, 200, ApiResponseUtil.successWithData(details));
+                    ApiResponseUtil.write(exchange, 201, ApiResponseUtil.successWithData(details));
                 } else {
                     ApiResponseUtil.write(exchange, 500, ApiResponseUtil.error("Lỗi tạo booking hoặc trùng lịch!"));
                 }
 
             }
             // 2. PUT /api/bookings/checkin/{id}
-            else if ("PUT".equalsIgnoreCase(method) && path.startsWith("/api/bookings/checkin/")) {
-                int bookingId = Integer.parseInt(path.substring("/api/bookings/checkin/".length()));
+            else if ("PUT".equalsIgnoreCase(method) && (path.startsWith("/api/bookings/checkin/") || path.startsWith("/api/v1/bookings/checkin/"))) {
+                int bookingId = Integer.parseInt(path.substring(path.lastIndexOf('/') + 1));
                 Booking b = bookingService.getBookingById(bookingId);
                 
                 if (b != null) {
                     bookingService.updateBookingStatus(bookingId, "checked_in");
-                    roomService.updateRoomStatus(b.getRoomId(), "occupied");
+                    roomService.updateRoomStatus(b.getRoomId(), "occupied_clean");
                     ApiResponseUtil.write(exchange, 200, ApiResponseUtil.success("Check-in thành công"));
                 } else {
                     ApiResponseUtil.write(exchange, 404, ApiResponseUtil.error("Không tìm thấy Booking ID"));
                 }
             }
             // 3. PUT /api/bookings/checkout/{id}
-            else if ("PUT".equalsIgnoreCase(method) && path.startsWith("/api/bookings/checkout/")) {
-                int bookingId = Integer.parseInt(path.substring("/api/bookings/checkout/".length()));
+            else if ("PUT".equalsIgnoreCase(method) && (path.startsWith("/api/bookings/checkout/") || path.startsWith("/api/v1/bookings/checkout/"))) {
+                int bookingId = Integer.parseInt(path.substring(path.lastIndexOf('/') + 1));
                 Booking b = bookingService.getBookingById(bookingId);
                 
                 if (b != null) {
                     bookingService.updateBookingStatus(bookingId, "checked_out");
-                    roomService.updateRoomStatus(b.getRoomId(), "available");
 
                     // Cộng điểm tích lũy cho khách hàng sau khi check-out
                     try {
@@ -154,30 +168,32 @@ public class BookingController implements HttpHandler {
                 Booking b = bookingService.getBookingById(bookingId);
                 if (b != null) {
                     bookingService.cancelBooking(bookingId);
-                    roomService.updateRoomStatus(b.getRoomId(), "available");
                     ApiResponseUtil.write(exchange, 200, ApiResponseUtil.success("Hủy đặt phòng thành công"));
                 } else {
                     ApiResponseUtil.write(exchange, 404, ApiResponseUtil.error("Không tìm thấy Booking ID"));
                 }
             }
             // 4. GET /api/bookings/room/{roomId} - Active booking for a room
-            else if ("GET".equalsIgnoreCase(method) && path.startsWith("/api/bookings/room/")) {
-                int roomId = Integer.parseInt(path.substring("/api/bookings/room/".length()));
+            else if ("GET".equalsIgnoreCase(method) && (path.startsWith("/api/bookings/room/") || path.startsWith("/api/v1/bookings/room/"))) {
+                int roomId = Integer.parseInt(path.substring(path.lastIndexOf('/') + 1));
                 Gson gson = JsonUtil.getGson();
                 // Find the active booking for this room (checked_in, booked, or pending)
                 quanlykhachsan.backend.booking.Booking activeBooking = null;
+                long now = System.currentTimeMillis();
                 for (quanlykhachsan.backend.booking.Booking b : bookingService.getAllBookings()) {
-                    if (b.getRoomId() == roomId &&
-                        (b.getStatus().equals("checked_in") || b.getStatus().equals("booked") || b.getStatus().equals("pending"))) {
-                        activeBooking = b;
-                        break;
+                    String st = b.getStatus() != null ? b.getStatus().toLowerCase() : "";
+                    if (b.getRoomId() == roomId && (st.equals("checked_in") || st.equals("confirmed") || st.equals("pending") || st.equals("booked"))) {
+                        if (now >= b.getCheckInDate().getTime() && now <= b.getCheckOutDate().getTime()) {
+                            activeBooking = b;
+                            break;
+                        }
                     }
                 }
                 ApiResponseUtil.write(exchange, 200, ApiResponseUtil.successWithData(activeBooking));
             }
             // 5. GET /api/bookings/customer/{id}
-            else if ("GET".equalsIgnoreCase(method) && path.startsWith("/api/bookings/customer/")) {
-                int customerId = Integer.parseInt(path.substring("/api/bookings/customer/".length()));
+            else if ("GET".equalsIgnoreCase(method) && (path.startsWith("/api/bookings/customer/") || path.startsWith("/api/v1/bookings/customer/"))) {
+                int customerId = Integer.parseInt(path.substring(path.lastIndexOf('/') + 1));
                 java.util.List<Booking> list = bookingService.getBookingsByCustomer(customerId);
                 Gson gson = JsonUtil.getGson();
                 ApiResponseUtil.write(exchange, 200, ApiResponseUtil.successWithData(list));
@@ -187,6 +203,12 @@ public class BookingController implements HttpHandler {
                 exchange.sendResponseHeaders(405, -1);
             }
 
+        } catch (OptimisticLockException e) {
+            JsonObject error = new JsonObject();
+            error.addProperty("error_code", "ERR_409_CONFLICT");
+            error.addProperty("message", "Room state changed by another concurrent transaction");
+            error.addProperty("timestamp", java.time.Instant.now().toString());
+            ApiResponseUtil.write(exchange, 409, JsonUtil.getGson().toJson(error));
         } catch (Exception e) {
             e.printStackTrace();
             ApiResponseUtil.write(exchange, 500, ApiResponseUtil.error("Lỗi Server: " + e.getMessage()));

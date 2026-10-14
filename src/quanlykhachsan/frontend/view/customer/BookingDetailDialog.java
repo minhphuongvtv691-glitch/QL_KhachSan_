@@ -7,8 +7,6 @@ import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Locale;
 import quanlykhachsan.backend.booking.Booking;
-import quanlykhachsan.backend.room.Room;
-import quanlykhachsan.frontend.api.RoomAPI;
 import quanlykhachsan.frontend.utils.ThemeManager;
 
 public class BookingDetailDialog extends JDialog {
@@ -41,7 +39,7 @@ public class BookingDetailDialog extends JDialog {
         header.setBorder(new EmptyBorder(18, 18, 18, 18));
 
         JLabel title = new JLabel("Chi tiết đặt phòng");
-        title.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        title.setFont(new Font("Segoe UI", Font.BOLD, 20));
         title.setForeground(Color.WHITE);
         header.add(title, BorderLayout.WEST);
 
@@ -93,7 +91,7 @@ public class BookingDetailDialog extends JDialog {
 
         gbc.gridx = 0;
         JLabel lbl = new JLabel(label);
-        lbl.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        lbl.setFont(new Font("Segoe UI", Font.BOLD, 14));
         lbl.setForeground(ThemeManager.getTextMuted());
         parent.add(lbl, gbc);
 
