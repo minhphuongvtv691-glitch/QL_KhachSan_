@@ -40,6 +40,7 @@
 - Removed `DongBoSVN.bat` synchronization script.
 - Cleaned unused SVN placeholder folders (`trunk/`, `branches/`, `tags/`).
 
+
 ## [2026-10-13] — @codex — Dev C C3 frontend/backend files — C3 workflow review fixes
 - Added Phase 1 folio payment and POS batch-sync routes with idempotency handling; connected the desktop clients to the configured API and authenticated session.
 - Wired HTTP 503 responses to the Night Audit warning banner, disabled registered mutation controls during the freeze, and auto-syncs queued POS charges after unfreeze.
@@ -56,6 +57,7 @@
 - Verified the full suite on an isolated MariaDB 11.8.6 instance: 26 tests passed, 0 failures, 0 skipped. Coverage includes repeatable legacy-schema migration, the complete `database/hotel.sql` import, concurrent idempotent requests, and persisted failure replay.
 - Scoped migration metadata lookups to the active database, taught the schema integration test to honor SQL `DELIMITER` directives, and corrected booking seed 63 from invoice status `paid` to valid booking status `checked_out`.
 
+
 ## [2026-10-14] — @codex — Dev B/C room allocation and desktop room-map files — Phase 1 remaining-task audit and partial implementation
 - Added a MariaDB 11 opt-in race test for two room reservations; it requires `HOTEL_RUN_DB_INTEGRATION=true` and a disposable schema whose name ends in `_test`, then checks one success, one conflict, and one version increment.
 - Added the fixed 80×60 room tile, 5-column detached map, six canonical status colors, in-memory room/guest/booking filtering, dense 24px booking status renderer, safe detached-window bounds persistence, and an EDT dispatch duration reporter.
@@ -68,8 +70,11 @@
 - Corrected new booking folios to begin with zero outstanding balance so nightly ledger postings do not duplicate the booking estimate; standardized audit freeze responses on `Retry-After: 300`.
 - JDK 17 compiled all production and test Java sources. Focused JUnit run: 6 passed, 0 failed, 2 opt-in MariaDB tests aborted because no disposable MariaDB test schema was configured. `mvn -o test` remains unavailable due an unwritable user-level Maven repository lock. The two-hour simulation and live MariaDB transaction/recovery scenarios still require execution in their target environments.
 
+
 ## [2026-10-15] — @codex — Phase 2 backend, desktop/web UI, migrations, tests, scripts, and documentation — Phase 2 implementation and acceptance status
 - Added the guest portal, OTP, public booking, server-authoritative pricing and vouchers, concurrent room allocation, VietQR, HMAC-verified webhooks, idempotent folio settlement, and overpayment handling.
 - Added housekeeping and room-state workflows, minibar posting, OOO/OOS maintenance, PDF invoices with explicitly required tax configuration, DBR reporting, and corresponding Swing/web interfaces; included Phase 2 migrations, test doubles, and regression coverage.
 - Added the changed-file inventory, required production configuration, implementation/acceptance report, and verification evidence. Synthetic values are limited to test fixtures; no production legal, banking, or OTP values were fabricated.
 - The Phase 2 report records 109 automated tests passing with 0 failures and 0 skips on Java 17 and isolated MariaDB 11.4.2. Overall acceptance remains partial pending manual Swing/render-timing checks, Docker verification, and approved production configuration.
+
+
