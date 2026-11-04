@@ -61,6 +61,12 @@ public class Main {
 
             System.out.println("[STARTUP READY] POST http://localhost:8081/api/v1/auth/login");
 
+            try {
+                Thread.currentThread().join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
         } catch (Throwable e) {
             System.err.println("[STARTUP FAILED] stage=" + stage);
             if(server!=null){closeBackgroundServices(server);server.stop(0);}
@@ -81,7 +87,7 @@ public class Main {
         Filter systemStatusFilter = new SystemStatusFilter();
         Filter idempotencyFilter = new IdempotencyFilter();
         Filter ipRateLimiter = new quanlykhachsan.backend.utils.IpRateLimiter();
-        Filter staticIpRateLimiter = new quanlykhachsan.backend.utils.IpRateLimiter(70);
+        Filter staticIpRateLimiter = new quanlykhachsan.backend.utils.IpRateLimiter(500);
 
         // --- ĐĂNG KÝ CÁC ROUTE (API ENDPOINTS) TẠI ĐÂY ---
         // Route Health (Cả /api/v1/health và /health đều public)
@@ -189,10 +195,9 @@ public class Main {
         // Thiết lập cấu hình mặc định và chạy server
         var staticFiles = new quanlykhachsan.backend.utils.StaticFileHandler(
                 java.nio.file.Path.of("web-ui", "public"));
-        // A page loads dozens of scripts/styles without a bearer header. Static assets must
-        // not consume the shared unauthenticated API budget during login navigation.
-        registerContext(server, staticIpRateLimiter, "/booking", staticFiles, exceptionFilter, corsFilter);
-        registerContext(server, staticIpRateLimiter, "/", staticFiles, exceptionFilter, corsFilter);
+        // The production route setup shares a single limiter across all contexts.
+        registerContext(server, ipRateLimiter, "/booking", staticFiles, exceptionFilter, corsFilter);
+        registerContext(server, ipRateLimiter, "/", staticFiles, exceptionFilter, corsFilter);
         server.setExecutor(Executors.newFixedThreadPool(20));
 
         return server;

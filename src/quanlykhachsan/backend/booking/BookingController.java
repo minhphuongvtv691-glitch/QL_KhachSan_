@@ -43,6 +43,30 @@ public class BookingController implements HttpHandler {
         if (!role.equals("guest")&&!SecurityUtil.hasPermission(exchange, 1, 2, 3)) return;
 
         try {
+            if ("POST".equalsIgnoreCase(method) && path.matches("/api/v1/bookings/\\d+/extend")) {
+                if (!SecurityUtil.hasPermission(exchange, 2)) return;
+                int bookingId = Integer.parseInt(path.split("/")[4]);
+                JsonObject request = JsonUtil.getGson().fromJson(
+                    new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8), JsonObject.class);
+                String checkoutValue = request != null && request.has("newCheckOutDate") && !request.get("newCheckOutDate").isJsonNull()
+                    ? request.get("newCheckOutDate").getAsString() : "";
+                if (checkoutValue.isBlank()) throw new IllegalArgumentException("newCheckOutDate is required");
+                java.time.LocalDateTime newCheckOut;
+                try { newCheckOut = java.time.LocalDateTime.parse(checkoutValue); }
+                catch (java.time.format.DateTimeParseException dateOnly) {
+                    newCheckOut = java.time.LocalDate.parse(checkoutValue).atTime(12, 0);
+                }
+                StayExtensionService.Result extension = bookingService.extendStay(bookingId, newCheckOut);
+                JsonObject data = new JsonObject();
+                data.addProperty("booking_id", bookingId);
+                data.addProperty("check_out_date", extension.checkOut().toString());
+                data.addProperty("additional_amount", extension.additionalAmount());
+                data.addProperty("folio_balance", extension.folioBalance());
+                data.addProperty("already_applied", extension.alreadyApplied());
+                ApiResponseUtil.write(exchange, 200, ApiResponseUtil.successWithData(data));
+                return;
+            }
+
             // 0. GET /api/bookings (Lấy danh sách booking)
             if ("GET".equalsIgnoreCase(method) && ("/api/bookings".equals(path) || "/api/v1/bookings".equals(path))) {
                 ApiResponseUtil.write(exchange, 200, ApiResponseUtil.successWithData(withPaymentStates(customer?bookingService.getBookingsByCustomer(quanlykhachsan.backend.hotelservice.ServiceOrderController.resolveCustomerId(exchange)):bookingService.getAllBookings())));
@@ -113,7 +137,7 @@ public class BookingController implements HttpHandler {
                 var checkOutTime=parseBookingTime(req.getCheckOutTime(),java.time.LocalTime.NOON);
                 var stay=quanlykhachsan.backend.room.StayWindow.resolve(rentalType,checkIn.atTime(checkInTime),checkOut.atTime(checkOutTime));
                 var room=RoomAllocationService.findRoom(roomId);if(room==null)throw new IllegalArgumentException("Unknown room");
-                var request=new PublicBookingService.Request(null,null,null,roomId,room.version(),stay.checkIn().toLocalDate(),stay.checkOut().toLocalDate(),null,1,null,stay.rentalType(),stay.checkIn().toLocalTime(),stay.checkOut().toLocalTime());
+                var request=new PublicBookingService.Request(null,null,null,roomId,room.version(),stay.checkIn().toLocalDate(),stay.checkOut().toLocalDate(),req.getVoucherCode(),1,null,stay.rentalType(),stay.checkIn().toLocalTime(),stay.checkOut().toLocalTime(),req.getPaymentChoice());
                 var result=new PublicBookingService().reserve(exchange.getRequestHeaders().getFirst("Idempotency-Key"),request,customerId,"Web");
                 ApiResponseUtil.write(exchange,result.status(),result.body());
             }
@@ -190,7 +214,11 @@ public class BookingController implements HttpHandler {
         } catch (IllegalArgumentException | java.time.DateTimeException e) {
             ApiResponseUtil.sendError(exchange,400,"ERR_400_BAD_REQUEST","Invalid booking request");
         } catch (IllegalStateException e) {
-            ApiResponseUtil.sendError(exchange,409,"ERR_409_CONFLICT","Booking state changed");
+            String message = path.matches("/api/v1/bookings/\\d+/extend") && e.getMessage() != null && !e.getMessage().isBlank()
+                ? e.getMessage()
+                : e.getMessage() != null && e.getMessage().startsWith("ANTI-OVERSTAY VIOLATION:")
+                    ? e.getMessage() : "Booking state changed";
+            ApiResponseUtil.sendError(exchange,409,"ERR_409_CONFLICT",message);
         } catch (OptimisticLockException e) {
             JsonObject error = new JsonObject();
             error.addProperty("error_code", "ERR_409_CONFLICT");

@@ -138,6 +138,7 @@ export function clearAuthSession() {
   write('token', null);
 }
 
+
 async function expireRejectedSession(response, session, authenticated) {
   if (response.status !== 401 || !authenticated || !session?.token) return;
   const error = await response.clone().json().catch(() => null);
@@ -145,6 +146,10 @@ async function expireRejectedSession(response, session, authenticated) {
   // A handler's 401 is not proof that the signed session has expired.
   if (!['ERR_401_TOKEN_INVALID', 'ERR_401_ROLE_CHANGED'].includes(error?.error_code)) return;
   if (getAuthSession()?.token !== session.token) return;
+
+function expireAuthSessionIfCurrent(session) {
+  if (session?.token && getAuthSession()?.token !== session.token) return;
+
   clearAuthSession();
   if (typeof window !== 'undefined' && window.dispatchEvent) {
     window.dispatchEvent(new Event('hotel:session-expired'));
@@ -161,8 +166,8 @@ function messageFor(status) {
 }
 
 export async function apiFetch(path, init = {}) {
-  const { timeoutMs = 2500, retryOnNetworkError = true, ...fetchInit } = init;
-  const requestTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 2500;
+  const { timeoutMs = 10000, retryOnNetworkError = true, ...fetchInit } = init;
+  const requestTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10000;
   if (!path || /^(?:[a-z]+:|\/\/)/i.test(path)) throw new ApiError('Đường dẫn yêu cầu không hợp lệ.');
   const cleanPath = path.startsWith('/') ? path : '/' + path;
   const isPublic = cleanPath.startsWith('/rooms/availability') || cleanPath.startsWith('/auth/');
@@ -227,7 +232,11 @@ export async function apiFetch(path, init = {}) {
     }
   }
 
+
   await expireRejectedSession(response, session, headers.has('Authorization'));
+
+  if (!isPublic && response.status === 401) expireAuthSessionIfCurrent(session);
+
 
   if (response.status === 204) return null;
 
@@ -242,7 +251,7 @@ export async function apiFetch(path, init = {}) {
   if (!response.ok) {
     const safeAiProviderError = ['/admin/ai-settings/models', '/admin/ai-settings/test'].includes(cleanPath)
       && ['AI_PROVIDER_UNREACHABLE', 'AI_PROVIDER_RESPONSE_INVALID', 'AI_PROVIDER_TIMEOUT', 'AI_PROVIDER_REJECTED', 'AI_SETTINGS_INVALID', 'AI_SETTINGS_UNAVAILABLE'].includes(result?.error_code);
-    const serverMessage = ((response.status < 500 || safeAiProviderError) && result && typeof result.message === 'string') ? result.message.trim() : '';
+    const serverMessage = ((response.status < 500 && ![401, 403].includes(response.status) || safeAiProviderError) && result && typeof result.message === 'string') ? result.message.trim() : '';
     throw new ApiError(serverMessage || messageFor(response.status), response.status, response.headers.get('Retry-After'));
   }
 
@@ -274,7 +283,11 @@ export async function fetchAuthenticatedFile(path, init = {}) {
     if (error.name === 'AbortError') throw error;
     throw new ApiError('Không thể tải tệp. Vui lòng thử lại.');
   }
+
   await expireRejectedSession(response, session, headers.has('Authorization'));
+
+  if (response.status === 401) expireAuthSessionIfCurrent(session);
+
   if (!response.ok) throw new ApiError(messageFor(response.status), response.status, response.headers.get('Retry-After'));
   if (!response.headers.get('Content-Type')?.toLowerCase().includes('application/pdf')) {
     throw new ApiError('Máy chủ không trả về tệp PDF hợp lệ.', response.status);
@@ -579,6 +592,7 @@ export async function submitBooking(payload) {
       totalAmount: Number(data.folio.balance), status: data.status, folio: data.folio,
       payment: data.payment || null };
   } catch (error) {
+    if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) throw error;
     throw new ApiError(TRANSACTION_UNCONFIRMED, error.status || 503);
   }
 }
